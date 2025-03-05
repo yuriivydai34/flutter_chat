@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 
 void main() {
   runApp(const MyApp());
@@ -25,11 +25,11 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  late final WebSocketChannel _channel;
   final _scrollController = ScrollController();
   final _messages = <String>[];
   final _messageController = TextEditingController();
   final _messageFocus = FocusNode();
+  late final IO.Socket socket;
 
   @override
   void initState() {
@@ -39,17 +39,22 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _createConnection() async {
-    // Connect to web socket
-    _channel = WebSocketChannel.connect(Uri.parse('ws://localhost:8080/ws'));
-
-    // Remember all messages that passed the channel
-    _channel.stream.listen(
-        (message) => setState(() {
-              _messages.add(message);
-              _scrollToBottom();
-            }),
-        // If something goes wrong...
-        onError: (error) => setState(() => _messages.add('Error: $error')));
+    // Dart client
+    socket = IO.io(
+        'http://localhost:3000',
+        IO.OptionBuilder()
+            .setTransports(['websocket']) // for Flutter or Dart VM
+            .build());
+    socket.onConnect((_) {
+      print('connect');
+    });
+    socket.on('chat message', (data) {
+      setState(() {
+        _messages.add(data);
+        _scrollToBottom();
+      });
+    });
+    socket.onDisconnect((_) => print('disconnect'));
   }
 
   void _scrollToBottom() {
@@ -62,7 +67,7 @@ class _ChatPageState extends State<ChatPage> {
 
   void _send() {
     if (_messageController.text.isNotEmpty) {
-      _channel.sink.add(_messageController.text);
+      socket.emit('chat message', _messageController.text);
       _messageController.text = '';
     }
     _messageFocus.requestFocus();
